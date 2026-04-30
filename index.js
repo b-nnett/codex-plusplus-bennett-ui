@@ -1786,6 +1786,10 @@ const FEATURES = {
       [${MENU_ATTR}="trigger"] {
         color: var(--color-token-foreground);
       }
+
+      [${MENU_ATTR}="trigger-icon"] {
+        color: var(--color-token-text-secondary);
+      }
     `;
     document.head.appendChild(style);
 
@@ -2195,7 +2199,7 @@ const FEATURES = {
       chevron.className = "text-token-text-secondary";
       chevron.textContent = "›";
 
-      trigger.append(label, chevron);
+      trigger.append(projectColorIcon(), label, chevron);
       const open = (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
@@ -2205,6 +2209,44 @@ const FEATURES = {
       trigger.addEventListener("focus", open);
       trigger.addEventListener("click", open);
       nativeMenu.appendChild(trigger);
+    };
+
+    const projectColorIcon = () => {
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("width", "20");
+      icon.setAttribute("height", "20");
+      icon.setAttribute("viewBox", "0 0 20 20");
+      icon.setAttribute("fill", "none");
+      icon.setAttribute("aria-hidden", "true");
+      icon.setAttribute(MENU_ATTR, "trigger-icon");
+      icon.classList.add("icon-sm", "shrink-0");
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute(
+        "d",
+        "M10 3.1C6.1 3.1 3 5.9 3 9.4c0 2.9 2.4 5.2 5.3 5.2h.8c.8 0 1.3.5 1.3 1.1 0 .7.5 1.2 1.3 1.2 3 0 5.3-3.1 5.3-6.7 0-3.9-3.1-7.1-7-7.1Z",
+      );
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "1.45");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+
+      const dots = [
+        ["7.2", "8"],
+        ["10", "6.8"],
+        ["12.8", "8"],
+        ["7.9", "11"],
+      ];
+      icon.appendChild(path);
+      for (const [cx, cy] of dots) {
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", cx);
+        dot.setAttribute("cy", cy);
+        dot.setAttribute("r", "0.65");
+        dot.setAttribute("fill", "currentColor");
+        icon.appendChild(dot);
+      }
+      return icon;
     };
 
     const findNativeContextMenu = (x, y) => {
