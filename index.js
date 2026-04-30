@@ -2185,11 +2185,15 @@ const FEATURES = {
       trigger.setAttribute("role", "menuitem");
       trigger.setAttribute("tabindex", "-1");
       trigger.setAttribute(MENU_ATTR, "trigger");
+      const nativeItem = nativeMenu.querySelector('[role="menuitem"]');
       trigger.className =
-        "text-token-foreground outline-hidden rounded-lg px-[var(--padding-row-x)] " +
-        "py-[var(--padding-row-y)] text-sm electron:text-base flex w-full items-center " +
-        "group hover:bg-token-list-hover-background focus:bg-token-list-hover-background " +
-        "cursor-interaction";
+        nativeItem instanceof HTMLElement && nativeItem.className
+          ? nativeItem.className
+          : "text-token-foreground outline-hidden rounded-lg px-[var(--padding-row-x)] " +
+            "py-[var(--padding-row-y)] text-sm electron:text-base flex w-full items-center " +
+            "group hover:bg-token-list-hover-background focus:bg-token-list-hover-background " +
+            "cursor-interaction";
+      trigger.classList.add("flex", "w-full", "items-center");
 
       const label = document.createElement("span");
       label.className = "min-w-0 flex-1 truncate";
