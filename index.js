@@ -1840,8 +1840,8 @@ const FEATURES = {
         .filter((node, index, rows) => rows.indexOf(node) === index);
 
     const clearMarks = () => {
-      for (const [row, handler] of rowHandlers) {
-        row.removeEventListener("contextmenu", handler);
+      for (const [, record] of rowHandlers) {
+        record.dispose();
       }
       rowHandlers.clear();
       document.querySelectorAll(`[${ATTR}]`).forEach((node) => {
@@ -1898,7 +1898,7 @@ const FEATURES = {
         setOptionalStyleVar(row, "--codexpp-project-blue-token-override", blueTokenOverrideFor(label));
         setOptionalStyleVar(row, "--codexpp-project-link-token-override", linkTokenOverrideFor(label));
         markProjectParts(row, label);
-        if (!rowHandlers.has(row)) bindColorMenu(row, label);
+        bindColorMenu(row, label);
       }
     };
 
@@ -1971,20 +1971,115 @@ const FEATURES = {
         });
     };
 
-    const bindColorMenu = (row, label) => {
-      const handler = (event) => {
-        pendingContextMenu = {
-          label,
-          x: event.clientX,
-          y: event.clientY,
-          at: Date.now(),
-        };
-        [0, 50, 150, 350].forEach((delay) =>
-          window.setTimeout(injectColorMenuIntoNativeMenu, delay),
-        );
+    const seedProjectMenu = (label, event, anchor) => {
+      const anchorRect = anchor?.getBoundingClientRect?.();
+      pendingContextMenu = {
+        label,
+        x: numberOrClient(event?.clientX, anchorRect?.right ?? anchorRect?.left ?? 0),
+        y: numberOrClient(event?.clientY, anchorRect?.top ?? 0),
+        at: Date.now(),
       };
-      row.addEventListener("contextmenu", handler);
-      rowHandlers.set(row, handler);
+      [0, 50, 150, 350].forEach((delay) =>
+        window.setTimeout(injectColorMenuIntoNativeMenu, delay),
+      );
+    };
+
+    const numberOrClient = (value, fallback) =>
+      typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+    const bindColorMenu = (row, label) => {
+      const existing = rowHandlers.get(row);
+      const overflowButton = findProjectOverflowButton(row, label);
+      if (existing?.label === label && existing?.overflowButton === overflowButton) {
+        return;
+      }
+      existing?.dispose();
+
+      const contextHandler = (event) => {
+        seedProjectMenu(label, event, row);
+      };
+      row.addEventListener("contextmenu", contextHandler);
+
+      const record = {
+        label,
+        overflowButton,
+        dispose() {
+          row.removeEventListener("contextmenu", contextHandler);
+          if (overflowButton) {
+            overflowButton.removeEventListener("pointerdown", overflowHandler, true);
+            overflowButton.removeEventListener("click", overflowHandler, true);
+          }
+        },
+      };
+
+      const overflowHandler = (event) => {
+        seedProjectMenu(label, event, overflowButton);
+      };
+      if (overflowButton) {
+        overflowButton.addEventListener("pointerdown", overflowHandler, true);
+        overflowButton.addEventListener("click", overflowHandler, true);
+      }
+
+      rowHandlers.set(row, record);
+    };
+
+    const findProjectOverflowButton = (row, label) => {
+      const mainAction = Array.from(row.querySelectorAll("[role='button'][aria-label]"))
+        .find((node) => node instanceof HTMLElement && labelFor(node) === label);
+      const candidates = Array.from(row.querySelectorAll("button, [role='button']"))
+        .filter((node) => {
+          if (!(node instanceof HTMLElement)) return false;
+          if (node === mainAction) return false;
+          const text = labelFor(node);
+          if (text === label || EXCLUDED_LABELS.has(text)) return false;
+          return true;
+        })
+        .map((node) => ({ node, score: overflowButtonScore(node) }))
+        .filter((candidate) => candidate.score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const ar = a.node.getBoundingClientRect();
+          const br = b.node.getBoundingClientRect();
+          return br.left - ar.left;
+        });
+      return candidates[0]?.node || null;
+    };
+
+    const overflowButtonScore = (node) => {
+      const label = labelFor(node);
+      const text = `${label} ${node.getAttribute("aria-label") || ""} ${node.getAttribute("title") || ""}`.toLowerCase();
+      let score = 0;
+      if (/\b(more|menu|options|actions)\b/.test(text)) score += 4;
+      if (node.getAttribute("aria-haspopup") === "menu") score += 4;
+      if (node.hasAttribute("data-state")) score += 2;
+      if (node.querySelector("svg")) score += 1;
+      if (node.querySelector("svg circle, svg [d*='2 12'], svg [d*='12 12']")) score += 2;
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 44 && rect.height <= 44) score += 1;
+      if (rect.width > 0 && rect.height > 0) score += 1;
+      return score;
+    };
+
+    const isProjectOverflowButton = (row, label, node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const mainAction = Array.from(row.querySelectorAll("[role='button'][aria-label]"))
+        .find((candidate) => candidate instanceof HTMLElement && labelFor(candidate) === label);
+      if (node === mainAction) return false;
+      const text = labelFor(node);
+      if (text === label || EXCLUDED_LABELS.has(text)) return false;
+      return overflowButtonScore(node) > 0;
+    };
+
+    const onProjectOverflowTrigger = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button, [role='button']");
+      if (!(button instanceof HTMLElement)) return;
+      const row = button.closest("div[role='listitem'][aria-label]");
+      if (!isProjectRow(row)) return;
+      const label = labelFor(row);
+      if (!isProjectOverflowButton(row, label, button)) return;
+      seedProjectMenu(label, event, button);
     };
 
     const openColorMenu = (label, x, y, anchor) => {
@@ -2175,9 +2270,9 @@ const FEATURES = {
 
     const reconcileMarkedRows = (rows) => {
       const active = new Set(rows);
-      for (const [row, handler] of Array.from(rowHandlers.entries())) {
+      for (const [row, record] of Array.from(rowHandlers.entries())) {
         if (active.has(row) && row.isConnected) continue;
-        row.removeEventListener("contextmenu", handler);
+        record.dispose();
         rowHandlers.delete(row);
         clearRowMarks(row);
       }
@@ -2234,6 +2329,8 @@ const FEATURES = {
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("focus", scheduleApply);
     document.addEventListener("visibilitychange", scheduleApply);
+    document.addEventListener("pointerdown", onProjectOverflowTrigger, true);
+    document.addEventListener("click", onProjectOverflowTrigger, true);
 
     api.log.info("sidebar project backgrounds active");
 
@@ -2244,6 +2341,8 @@ const FEATURES = {
       retryTimers.forEach((timer) => window.clearTimeout(timer));
       window.removeEventListener("focus", scheduleApply);
       document.removeEventListener("visibilitychange", scheduleApply);
+      document.removeEventListener("pointerdown", onProjectOverflowTrigger, true);
+      document.removeEventListener("click", onProjectOverflowTrigger, true);
       closeMenu();
       clearMarks();
       style.remove();
